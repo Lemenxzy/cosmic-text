@@ -139,6 +139,9 @@ pub struct FontSystem {
     /// Cache for loaded fonts from the database.
     font_cache: HashMap<(fontdb::ID, fontdb::Weight), Option<Arc<Font>>>,
 
+    /// Optical size (points) applied to fonts with an `opsz` axis; `None` leaves the axis at its default.
+    optical_size: Option<f32>,
+
     /// Sorted unique ID's of all Monospace fonts in DB
     monospace_font_ids: Vec<fontdb::ID>,
 
@@ -261,6 +264,7 @@ impl FontSystem {
             monospace_font_ids,
             per_script_monospace_font_ids,
             font_cache: HashMap::default(),
+            optical_size: None,
             font_matches_cache: HashMap::default(),
             font_codepoint_support_info_cache: HashMap::default(),
             monospace_fallbacks_buffer: BTreeSet::default(),
@@ -298,8 +302,22 @@ impl FontSystem {
         (self.locale, self.db)
     }
 
+    /// Optical size (points) applied to fonts with an `opsz` axis.
+    pub fn optical_size(&self) -> Option<f32> {
+        self.optical_size
+    }
+
+    /// Set the optical size (points) for fonts with an `opsz` axis. Changing it drops loaded font instances.
+    pub fn set_optical_size(&mut self, size: Option<f32>) {
+        if self.optical_size != size {
+            self.optical_size = size;
+            self.font_cache.clear();
+        }
+    }
+
     /// Get a font by its ID and weight.
     pub fn get_font(&mut self, id: fontdb::ID, weight: fontdb::Weight) -> Option<Arc<Font>> {
+        let optical_size = self.optical_size;
         self.font_cache
             .entry((id, weight))
             .or_insert_with(|| {
@@ -307,7 +325,7 @@ impl FontSystem {
                 unsafe {
                     self.db.make_shared_face_data(id);
                 }
-                if let Some(font) = Font::new(&self.db, id, weight) {
+                if let Some(font) = Font::new(&self.db, id, weight, optical_size) {
                     Some(Arc::new(font))
                 } else {
                     log::warn!(
